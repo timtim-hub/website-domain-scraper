@@ -1,13 +1,16 @@
 # Website Domain Scraper Configuration
 
 # URL to start crawling from (required)
-start_url: https://topai.tools/category/travel
+start_url: https://topai.tools/category/ai-characters
 
 # Maximum number of pages to crawl (default: 100)
 max_pages: 100
 
-# Delay between requests in seconds (default: 0.5)
-request_delay: 0.5
+# Number of worker threads for parallel crawling (default: 8)
+workers: 8
+
+# Delay between requests in seconds (default: 0.1)
+request_delay: 0.1
 
 # Enable verbose logging (default: false)
 verbose: true 

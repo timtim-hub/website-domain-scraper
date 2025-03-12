@@ -7,6 +7,7 @@ A Python tool for crawling a website, following all internal links, extracting a
 - Follows all internal links on a website (up to a configurable maximum)
 - Collects all external links and extracts their domains
 - Saves the unique domains to a text file
+- Multithreaded crawling for high performance (configurable worker count)
 - Respects server load with configurable delay between requests
 - Multiple configuration options (command-line, config file)
 - Automatic output file naming
@@ -38,8 +39,11 @@ The easiest way to use the scraper is with the config file:
    # Maximum number of pages to crawl (default: 100)
    max_pages: 100
    
-   # Delay between requests in seconds (default: 0.5)
-   request_delay: 0.5
+   # Number of worker threads for parallel crawling (default: 8)
+   workers: 8
+   
+   # Delay between requests in seconds (default: 0.1)
+   request_delay: 0.1
    
    # Enable verbose logging (default: false)
    verbose: false
@@ -82,12 +86,17 @@ Example with options:
 python scraper.py https://example.com --output results.txt --max-pages 200 --verbose
 ```
 
+## Performance
+
+The config-based version uses multithreading with configurable workers (default: 8) to significantly speed up crawling. This allows it to process more pages in less time compared to the single-threaded versions.
+
 ## Notes
 
-- The tool respects website load by waiting 0.5 seconds between requests (configurable)
+- The tool respects website load by using a configurable delay between requests (default: 0.1 seconds)
 - It uses a breadth-first search approach to follow internal links
 - External links are identified by comparing domains
 - The tool uses a custom User-Agent to avoid being blocked
+- Using too many worker threads or too small a delay might overload some servers - adjust according to the website's capacity
 
 ## License
 

@@ -6,6 +6,7 @@ This script crawls a website, follows all internal links,
 collects all external links, and saves their domains to a text file.
 Configuration is loaded from a YAML config file.
 Output filenames are automatically generated based on the crawled domain.
+Uses multithreading for faster crawling.
 """
 
 import yaml
@@ -16,6 +17,9 @@ import time
 import logging
 import uuid
 import os
+import concurrent.futures
+import threading
+import queue
 from typing import Set, List, Dict
 from collections import Counter
 
@@ -25,6 +29,15 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+# Thread-safe structures
+url_queue = queue.Queue()
+visited_urls = set()
+visited_urls_lock = threading.Lock()
+external_domains = set()
+external_domains_lock = threading.Lock()
+page_count = 0
+page_count_lock = threading.Lock()
 
 def get_domain(url: str) -> str:
     """Extract domain from a URL."""
@@ -62,59 +75,119 @@ def extract_links(html: str, base_url: str) -> List[str]:
     
     return links
 
-def crawl_website(start_url: str, max_pages: int = 100, request_delay: float = 0.5) -> Set[str]:
+def worker(base_domain: str, max_pages: int, request_delay: float):
     """
-    Crawl a website, following internal links and collecting external domains.
+    Worker function for each thread.
+    Processes URLs from the queue, extracts links, and updates shared state.
+    """
+    global page_count
+    
+    while True:
+        try:
+            # Check if we've reached the maximum number of pages
+            with page_count_lock:
+                if page_count >= max_pages:
+                    break
+            
+            # Get the next URL from the queue with a timeout
+            try:
+                current_url = url_queue.get(timeout=1)
+            except queue.Empty:
+                # If the queue is empty, wait a moment and check again
+                time.sleep(0.1)
+                continue
+            
+            # Skip if already visited
+            with visited_urls_lock:
+                if current_url in visited_urls:
+                    url_queue.task_done()
+                    continue
+                visited_urls.add(current_url)
+            
+            # Increment page count
+            with page_count_lock:
+                page_count += 1
+                current_count = page_count
+                if current_count > max_pages:
+                    url_queue.task_done()
+                    break
+                logger.info(f"Crawling: {current_url} ({current_count}/{max_pages})")
+            
+            # Fetch and parse the page
+            html = fetch_page(current_url)
+            if not html:
+                url_queue.task_done()
+                continue
+            
+            # Extract links
+            links = extract_links(html, current_url)
+            
+            # Process each link
+            for link in links:
+                # Internal link - add to the queue
+                if is_internal_link(link, base_domain):
+                    with visited_urls_lock:
+                        if link not in visited_urls:
+                            url_queue.put(link)
+                # External link - add domain to results
+                else:
+                    external_domain = get_domain(link)
+                    if external_domain:
+                        with external_domains_lock:
+                            external_domains.add(external_domain)
+            
+            # Be nice to the server
+            time.sleep(request_delay)
+            url_queue.task_done()
+        
+        except Exception as e:
+            logger.error(f"Error in worker thread: {e}")
+            url_queue.task_done()
+
+def crawl_website(start_url: str, max_pages: int = 100, request_delay: float = 0.1, num_workers: int = 8) -> Set[str]:
+    """
+    Crawl a website using multiple threads, following internal links and collecting external domains.
     
     Args:
         start_url: URL to start crawling from
         max_pages: Maximum number of pages to crawl
         request_delay: Delay between requests in seconds
+        num_workers: Number of worker threads to use
     
     Returns:
         Set of external domains found
     """
+    global page_count, visited_urls, external_domains
+    
+    # Reset global variables
+    with page_count_lock:
+        page_count = 0
+    with visited_urls_lock:
+        visited_urls.clear()
+    with external_domains_lock:
+        external_domains.clear()
+    
+    # Get the base domain
     base_domain = get_domain(start_url)
-    logger.info(f"Starting crawl of {base_domain} from {start_url}")
+    logger.info(f"Starting crawl of {base_domain} from {start_url} with {num_workers} workers")
     
-    visited_urls = set()
-    to_visit = [start_url]
-    external_domains = set()
-    page_count = 0
+    # Add the start URL to the queue
+    url_queue.put(start_url)
     
-    while to_visit and page_count < max_pages:
-        current_url = to_visit.pop(0)
+    # Create and start worker threads
+    with concurrent.futures.ThreadPoolExecutor(max_workers=num_workers) as executor:
+        # Submit worker tasks
+        futures = [
+            executor.submit(worker, base_domain, max_pages, request_delay) 
+            for _ in range(num_workers)
+        ]
         
-        # Skip if already visited
-        if current_url in visited_urls:
-            continue
-        
-        logger.info(f"Crawling: {current_url} ({page_count+1}/{max_pages})")
-        visited_urls.add(current_url)
-        page_count += 1
-        
-        # Fetch and parse the page
-        html = fetch_page(current_url)
-        if not html:
-            continue
-        
-        # Extract links
-        links = extract_links(html, current_url)
-        
-        # Process each link
-        for link in links:
-            # Internal link - add to the queue
-            if is_internal_link(link, base_domain):
-                if link not in visited_urls and link not in to_visit:
-                    to_visit.append(link)
-            # External link - add domain to results
-            else:
-                external_domain = get_domain(link)
-                if external_domain:
-                    external_domains.add(external_domain)
-        
-        # Be nice to the server
-        time.sleep(request_delay)
+        # Wait for all tasks to complete or for max_pages to be reached
+        for future in concurrent.futures.as_completed(futures):
+            try:
+                future.result()
+            except Exception as e:
+                logger.error(f"Worker thread error: {e}")
     
     logger.info(f"Crawl completed. Visited {len(visited_urls)} pages. Found {len(external_domains)} unique external domains.")
     return external_domains
@@ -152,7 +225,8 @@ def load_config(config_file: str = 'config.yaml') -> Dict:
         return {
             'start_url': 'https://example.com',
             'max_pages': 100,
-            'request_delay': 0.5,
+            'workers': 8,
+            'request_delay': 0.1,
             'verbose': False
         }
 
@@ -168,7 +242,8 @@ def main():
     # Get parameters from config
     start_url = config.get('start_url')
     max_pages = config.get('max_pages', 100)
-    request_delay = config.get('request_delay', 0.5)
+    request_delay = config.get('request_delay', 0.1)
+    num_workers = config.get('workers', 8)
     
     # Validate URL
     parsed_url = urlparse(start_url)
@@ -180,7 +255,7 @@ def main():
     output_file = generate_output_filename(start_url)
     
     # Crawl website and get external domains
-    external_domains = crawl_website(start_url, max_pages, request_delay)
+    external_domains = crawl_website(start_url, max_pages, request_delay, num_workers)
     
     # Save domains to file
     save_domains_to_file(external_domains, output_file)
