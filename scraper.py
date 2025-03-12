@@ -12,7 +12,8 @@ from bs4 import BeautifulSoup
 from urllib.parse import urlparse, urljoin
 import time
 import logging
-from typing import Set, List
+from typing import Set, List, Dict
+from collections import Counter
 
 # Configure logging
 logging.basicConfig(
@@ -57,7 +58,7 @@ def extract_links(html: str, base_url: str) -> List[str]:
     
     return links
 
-def crawl_website(start_url: str, max_pages: int = 100) -> Set[str]:
+def crawl_website(start_url: str, max_pages: int = 100) -> Dict[str, int]:
     """
     Crawl a website, following internal links and collecting external domains.
     
@@ -66,14 +67,14 @@ def crawl_website(start_url: str, max_pages: int = 100) -> Set[str]:
         max_pages: Maximum number of pages to crawl
     
     Returns:
-        Set of external domains found
+        Dictionary of external domains and their occurrence counts
     """
     base_domain = get_domain(start_url)
     logger.info(f"Starting crawl of {base_domain} from {start_url}")
     
     visited_urls = set()
     to_visit = [start_url]
-    external_domains = set()
+    external_domains = Counter()
     page_count = 0
     
     while to_visit and page_count < max_pages:
@@ -105,21 +106,22 @@ def crawl_website(start_url: str, max_pages: int = 100) -> Set[str]:
             else:
                 external_domain = get_domain(link)
                 if external_domain:
-                    external_domains.add(external_domain)
+                    external_domains[external_domain] += 1
         
         # Be nice to the server
         time.sleep(0.5)
     
-    logger.info(f"Crawl completed. Visited {len(visited_urls)} pages. Found {len(external_domains)} external domains.")
+    logger.info(f"Crawl completed. Visited {len(visited_urls)} pages. Found {len(external_domains)} unique external domains.")
     return external_domains
 
-def save_domains_to_file(domains: Set[str], output_file: str) -> None:
-    """Save a set of domains to a text file."""
+def save_domains_to_file(domain_counts: Dict[str, int], output_file: str) -> None:
+    """Save a dictionary of domains and their counts to a text file."""
     try:
         with open(output_file, 'w') as f:
-            for domain in sorted(domains):
-                f.write(f"{domain}\n")
-        logger.info(f"Saved {len(domains)} domains to {output_file}")
+            f.write("# Domain\tCount\n")
+            for domain, count in sorted(domain_counts.items(), key=lambda x: (-x[1], x[0])):
+                f.write(f"{domain}\t{count}\n")
+        logger.info(f"Saved {len(domain_counts)} domains to {output_file}")
     except IOError as e:
         logger.error(f"Error saving domains to file: {e}")
 
