@@ -25,15 +25,27 @@ A Python tool for crawling a website, following all internal links, extracting a
 
 ## Usage
 
+### Standard Version (with domain counts)
+
 Basic usage:
 ```
 python scraper.py https://example.com
 ```
 
-This will crawl the website starting from the provided URL and save all found external domains to `domains.txt` in the current directory.
+This will crawl the website starting from the provided URL and save all found external domains with their occurrence counts to `domains.txt` in the current directory.
+
+### Domains-Only Version
+
+If you only want the domain names without the occurrence counts:
+```
+python domains_only_scraper.py https://example.com
+```
+
+This works the same way as the standard version but outputs only the domain names without counts.
 
 ### Options
 
+Both scripts support the following options:
 - `--output`, `-o`: Specify an output file (default: domains.txt)
 - `--max-pages`, `-m`: Set the maximum number of pages to crawl (default: 100)
 - `--verbose`, `-v`: Enable verbose logging
