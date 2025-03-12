@@ -8,7 +8,8 @@ A Python tool for crawling a website, following all internal links, extracting a
 - Collects all external links and extracts their domains
 - Saves the unique domains to a text file
 - Respects server load with configurable delay between requests
-- Command-line interface with customizable options
+- Multiple configuration options (command-line, config file)
+- Automatic output file naming
 
 ## Installation
 
@@ -24,6 +25,32 @@ A Python tool for crawling a website, following all internal links, extracting a
    ```
 
 ## Usage
+
+### Config File Version (Recommended)
+
+The easiest way to use the scraper is with the config file:
+
+1. Edit the `config.yaml` file to set your desired URL and options:
+   ```yaml
+   # URL to start crawling from (required)
+   start_url: https://example.com
+   
+   # Maximum number of pages to crawl (default: 100)
+   max_pages: 100
+   
+   # Delay between requests in seconds (default: 0.5)
+   request_delay: 0.5
+   
+   # Enable verbose logging (default: false)
+   verbose: false
+   ```
+
+2. Run the scraper without any arguments:
+   ```
+   python config_scraper.py
+   ```
+
+The script will automatically generate an output filename based on the domain being crawled plus a random string (e.g., `example_com_a1b2c3d4.txt`).
 
 ### Standard Version (with domain counts)
 
@@ -43,9 +70,9 @@ python domains_only_scraper.py https://example.com
 
 This works the same way as the standard version but outputs only the domain names without counts.
 
-### Options
+### Command-Line Options
 
-Both scripts support the following options:
+The command-line versions support the following options:
 - `--output`, `-o`: Specify an output file (default: domains.txt)
 - `--max-pages`, `-m`: Set the maximum number of pages to crawl (default: 100)
 - `--verbose`, `-v`: Enable verbose logging
@@ -57,7 +84,7 @@ python scraper.py https://example.com --output results.txt --max-pages 200 --ver
 
 ## Notes
 
-- The tool respects website load by waiting 0.5 seconds between requests
+- The tool respects website load by waiting 0.5 seconds between requests (configurable)
 - It uses a breadth-first search approach to follow internal links
 - External links are identified by comparing domains
 - The tool uses a custom User-Agent to avoid being blocked
